@@ -1,8 +1,4 @@
-"""项目统一配置中心。
-
-所有模块通过 `from insight.config import settings` 读取配置，
-不要在各处散落地 os.getenv。
-"""
+"""项目统一配置中心。"""
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from functools import lru_cache
