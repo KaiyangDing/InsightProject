@@ -1,0 +1,8 @@
+[project]
+name = "insightproject"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "openai>=2.43.0",
+    "python-dotenv>=1.2.2",
+]
