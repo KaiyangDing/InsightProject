@@ -1,6 +1,12 @@
-"""第 2 步：读取冻结的预测，执行并打分（不调模型，可反复跑、改度量后重跑）。"""
+"""第 2 步：读取冻结的预测，执行并打分（不调模型，可反复跑）。
+
+用法：
+    uv run scripts/score_spider.py                        # 打分 predictions.json
+    uv run scripts/score_spider.py predictions_agent.json # 打分指定文件
+"""
 
 import json
+import sys
 
 from insight.db import Database
 from insight.errors import SQLExecutionError
@@ -16,7 +22,8 @@ def db_path_for(db_id: str) -> str:
 
 
 def main() -> None:
-    preds = json.loads((SPIDER_DIR / "predictions.json").read_text(encoding="utf-8"))
+    preds_file = sys.argv[1] if len(sys.argv) > 1 else "predictions.json"
+    preds = json.loads((SPIDER_DIR / preds_file).read_text(encoding="utf-8"))
 
     results = []
     correct = 0
@@ -44,16 +51,11 @@ def main() -> None:
         results.append({**p, "correct": ok})
 
     total = len(preds)
-    print(f"===== EX = {correct}/{total} = {correct / total:.1%} =====")
+    print(f"===== [{preds_file}] EX = {correct}/{total} = {correct / total:.1%} =====")
 
-    out = SPIDER_DIR / "scored_results.json"
+    out = SPIDER_DIR / f"scored_{preds_file}"
     out.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"明细 → {out}")
-
-    print("\n----- 错例 -----")
-    for r in results:
-        if not r["correct"]:
-            print(f"\nQ: {r['question']}\ngold: {r['gold_sql']}\nours: {r['our_sql']}")
 
 
 if __name__ == "__main__":
