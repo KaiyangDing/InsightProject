@@ -1,6 +1,8 @@
-"""下载 Spider dev(validation) 的一个小子集到 data/spider/，供 eval 使用。
+"""下载 Spider dev(validation) 的一个【偏难】子集到 data/spider/，供 eval 使用。
 
-为省时省钱，只下子集涉及到的数据库文件（不拉全量）。可重复运行。
+难度用 gold SQL 的复杂度信号粗估（JOIN/GROUP BY/HAVING/嵌套/集合运算/多条件…），
+按库分层、每库取最难的若干题，凑成跨域且有挑战性的子集。可重复运行。
+注：这是透明的难度【代理】，不等于 Spider 官方 hardness。
 """
 
 import json
@@ -8,19 +10,30 @@ from collections import defaultdict
 
 from huggingface_hub import hf_hub_download
 
-from insight.db import Database
 from insight.paths import DATA_DIR
 
 REPO = "prem-research/spider"
 SPIDER_DIR = DATA_DIR / "spider"
-SUBSET_SIZE = 50  # 先取 50 题做基线
-MAX_PER_DB = 10  # 每个库最多 10 题，保证跨库分布
+PER_DB = 5  # 每个库取最难的 5 题（× 20 库 ≈ 100 题）
+
+
+def hardness(gold_sql: str) -> int:
+    """粗略难度分：统计 gold SQL 的复杂度信号，越高越难。"""
+    s = f" {gold_sql.lower()} "
+    score = 0
+    score += s.count(" join ")
+    score += s.count(" group by ")
+    score += s.count(" having ")
+    score += s.count(" order by ")
+    score += s.count(" union ") + s.count(" intersect ") + s.count(" except ")
+    score += max(0, s.count("select") - 1)  # 嵌套子查询（多于 1 个 select）
+    score += s.count(" and ") + s.count(" or ")  # 多条件
+    return score
 
 
 def main() -> None:
     SPIDER_DIR.mkdir(parents=True, exist_ok=True)
 
-    # 1) 下 dev(validation) 题目集（含 db_id / question / query[标准SQL]）
     val_path = hf_hub_download(
         repo_id=REPO,
         repo_type="dataset",
@@ -30,18 +43,17 @@ def main() -> None:
     with open(val_path, encoding="utf-8") as f:
         examples = json.load(f)
 
-    # 2) 跨库分层抽样，凑一个子集
-    per_db: dict[str, int] = defaultdict(int)
-    subset = []
+    # 按库分组，每库取最难的 PER_DB 题（跨全部 20 个 dev 库）
+    by_db: dict[str, list] = defaultdict(list)
     for ex in examples:
-        if per_db[ex["db_id"]] >= MAX_PER_DB:
-            continue
-        subset.append(ex)
-        per_db[ex["db_id"]] += 1
-        if len(subset) >= SUBSET_SIZE:
-            break
+        by_db[ex["db_id"]].append(ex)
 
-    # 3) 下子集用到的数据库 sqlite 文件
+    subset = []
+    for exs in by_db.values():
+        exs_sorted = sorted(exs, key=lambda e: hardness(e["query"]), reverse=True)
+        subset.extend(exs_sorted[:PER_DB])
+
+    # 下子集涉及到的数据库 sqlite 文件
     db_ids = sorted({ex["db_id"] for ex in subset})
     for db_id in db_ids:
         hf_hub_download(
@@ -51,21 +63,16 @@ def main() -> None:
             local_dir=SPIDER_DIR,
         )
 
-    # 4) 存下本次子集，供下一步 eval 读取
     subset_path = SPIDER_DIR / "dev_subset.json"
     subset_path.write_text(
         json.dumps(subset, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"✅ 下载完成：{len(subset)} 题，跨 {len(db_ids)} 个数据库")
-    print(f"   子集 → {subset_path}")
 
-    # 5) 冒烟：确认我们的 Database 能直接读 Spider 的库
-    first = subset[0]
-    db_file = SPIDER_DIR / "database" / first["db_id"] / f"{first['db_id']}.sqlite"
-    db = Database(str(db_file))
+    avg_hard = sum(hardness(ex["query"]) for ex in subset) / len(subset)
     print(
-        f"   冒烟（{first['db_id']}）：schema {len(db.get_schema_text())} 字符，可读 ✅"
+        f"✅ 子集：{len(subset)} 题，跨 {len(db_ids)} 个库，平均难度分 {avg_hard:.1f}"
     )
+    print(f"   → {subset_path}")
 
 
 if __name__ == "__main__":
