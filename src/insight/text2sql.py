@@ -14,6 +14,13 @@ SYSTEM_PROMPT = """你是一名严谨的数据分析师，精通 SQLite。
 - 只使用 schema 中出现的表和字段，不要臆造。
 - 只允许 SELECT（只读）。
 - 直接输出 SQL 本身，不要解释、不要 markdown 代码块。
+
+注意以下高频易错点：
+- "同时满足两个独立条件 / 既…又…（both A and B）" → 优先用 INTERSECT；
+- "是 A 但不是 B / 没有…的" → 用 EXCEPT（集合差），而非简单的 != 或 NOT IN；
+- "A 或 B 的并集" → 用 UNION；
+- 注意 AND/OR 优先级，必要时加括号；
+- 字面值（国家/语言/类别名等）的大小写要贴合数据中的实际写法。
 """
 
 USER_TEMPLATE = """数据库 schema：
@@ -23,16 +30,49 @@ USER_TEMPLATE = """数据库 schema：
 
 请输出对应的 SQLite 查询。"""
 
+# few-shot 示例用一个【通用合成 schema】（非 Spider 测试题，避免泄题），只教模式。
+FEW_SHOT_SCHEMA = """CREATE TABLE student (id INT, name TEXT, grade TEXT, gpa REAL);
+CREATE TABLE membership (student_id INT, club TEXT);"""
+
+FEW_SHOT: list[tuple[str, str]] = [
+    (
+        "Find the names of students who are in both the 'Chess' club and the 'Art' club.",
+        "SELECT name FROM student JOIN membership ON student.id = membership.student_id "
+        "WHERE club = 'Chess' INTERSECT SELECT name FROM student JOIN membership "
+        "ON student.id = membership.student_id WHERE club = 'Art'",
+    ),
+    (
+        "Find the names of students in the 'Chess' club but not in the 'Art' club.",
+        "SELECT name FROM student JOIN membership ON student.id = membership.student_id "
+        "WHERE club = 'Chess' EXCEPT SELECT name FROM student JOIN membership "
+        "ON student.id = membership.student_id WHERE club = 'Art'",
+    ),
+    (
+        "List the names of students who are seniors, or juniors with a GPA above 3.5.",
+        "SELECT name FROM student WHERE grade = 'senior' "
+        "UNION SELECT name FROM student WHERE grade = 'junior' AND gpa > 3.5",
+    ),
+]
+
 
 def build_messages(question: str, schema: str) -> list[dict]:
-    """构造首轮对话消息。"""
-    return [
-        {"role": "system", "content": SYSTEM_PROMPT},
+    """system + 几个 few-shot 示例 + 真实问题。"""
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    for ex_q, ex_sql in FEW_SHOT:
+        messages.append(
+            {
+                "role": "user",
+                "content": USER_TEMPLATE.format(schema=FEW_SHOT_SCHEMA, question=ex_q),
+            }
+        )
+        messages.append({"role": "assistant", "content": ex_sql})
+    messages.append(
         {
             "role": "user",
             "content": USER_TEMPLATE.format(schema=schema, question=question),
-        },
-    ]
+        }
+    )
+    return messages
 
 
 def request_sql(client: OpenAI, model: str, messages: list[dict]) -> str:
