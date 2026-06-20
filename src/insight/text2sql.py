@@ -24,19 +24,20 @@ USER_TEMPLATE = """数据库 schema：
 请输出对应的 SQLite 查询。"""
 
 
-def generate_sql(client: OpenAI, model: str, question: str, schema: str) -> str:
-    """调用 LLM 生成 SQL。temperature=0 追求确定性与可复现。"""
-    resp = client.chat.completions.create(
-        model=model,
-        temperature=0,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {
-                "role": "user",
-                "content": USER_TEMPLATE.format(schema=schema, question=question),
-            },
-        ],
-    )
+def build_messages(question: str, schema: str) -> list[dict]:
+    """构造首轮对话消息。"""
+    return [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {
+            "role": "user",
+            "content": USER_TEMPLATE.format(schema=schema, question=question),
+        },
+    ]
+
+
+def request_sql(client: OpenAI, model: str, messages: list[dict]) -> str:
+    """按给定消息历史请求一条 SQL（首轮和纠错轮都用它）。temperature=0 求确定性。"""
+    resp = client.chat.completions.create(model=model, temperature=0, messages=messages)
     raw = resp.choices[0].message.content or ""
     return _extract_sql(raw)
 
