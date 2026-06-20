@@ -7,7 +7,7 @@ from insight.config import get_settings
 settings = get_settings()
 
 client = OpenAI(
-    api_key=settings.dashscope_api_key,
+    api_key=settings.dashscope_api_key.get_secret_value(),
     base_url=settings.dashscope_base_url,
 )
 
