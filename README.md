@@ -117,7 +117,8 @@ InsightProject/
 │   ├── demos/             # 交互演示
 │   │   ├── ask.py         #   自然语言 → SQL → 结果
 │   │   ├── analyze.py     #   SQL → 沙箱 pandas 进阶分析
-│   │   └── chart.py       #   SQL → 沙箱 matplotlib 画图 → chart.png
+│   │   ├── chart.py       #   SQL → 沙箱 matplotlib 画图 → chart.png
+│   │   └── hello_bailian.py  #   百炼连通性自检（最早的 smoke test）
 │   └── spider/            # Spider 评测流水线
 │       └── download / predict / score_spider.py
 ├── tests/                 # pytest（纠错 / 护栏 / EX / 代码执行 / 分析）
