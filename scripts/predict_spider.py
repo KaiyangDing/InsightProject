@@ -9,7 +9,6 @@ import sys
 from insight.agent import Text2SQLAgent
 from insight.config import get_settings
 from insight.db import Database
-from insight.errors import SQLExecutionError
 from insight.llm import get_chat_client
 from insight.paths import DATA_DIR
 from insight.text2sql import build_messages, request_sql
@@ -31,15 +30,9 @@ def main() -> None:
     for i, ex in enumerate(subset, 1):
         db = Database(db_path_for(ex["db_id"]))
         if use_agent:
-            # 自我纠错 Agent：生成→执行→报错喂回重试；预算用尽仍失败则记 None
-            try:
-                our_sql = (
-                    Text2SQLAgent(client, settings.chat_model, db)
-                    .run(ex["question"])
-                    .sql
-                )
-            except SQLExecutionError:
-                our_sql = None
+            # 自我纠错 Agent；预算用尽仍失败则 our_sql=None
+            result = Text2SQLAgent(client, settings.chat_model, db).run(ex["question"])
+            our_sql = result.output if result.success else None
         else:
             schema = db.get_schema_text()
             our_sql = request_sql(

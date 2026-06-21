@@ -12,7 +12,6 @@ from langfuse import get_client
 from insight.agent import Text2SQLAgent
 from insight.config import get_settings
 from insight.db import Database
-from insight.errors import SQLExecutionError
 from insight.llm import get_chat_client
 
 DEFAULT_QUESTION = "各品类的总销售额是多少？按从高到低排序。"
@@ -29,19 +28,21 @@ def main() -> None:
     )
 
     print(f"❓ 问题：{question}")
-    try:
-        result = agent.run(question)
-        print(f"\n🧠 SQL（第 {result.attempts} 次尝试成功）：\n{result.sql}")
+    result = agent.run(question)
+
+    if result.success:
+        columns, rows = result.result
+        print(f"\n🧠 SQL（第 {result.attempts} 次尝试成功）：\n{result.output}")
         print("\n📊 查询结果：")
-        print(result.columns)
-        for row in result.rows:
+        print(columns)
+        for row in rows:
             print(row)
-        if not result.rows:
+        if not rows:
             print("（无数据）")
-    except SQLExecutionError as e:
-        print(f"\n❌ 自我纠错 {agent.max_attempts} 次后仍失败：\n{e}")
-    finally:
-        get_client().flush()  # 短脚本退出前把缓冲的 trace 发出去
+    else:
+        print(f"\n❌ 自我纠错 {result.attempts} 次后仍失败：\n{result.error}")
+
+    get_client().flush()
 
 
 if __name__ == "__main__":

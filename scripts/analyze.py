@@ -29,8 +29,8 @@ def main() -> None:
     print(f"🗄️ SQL：{sql}")
     print(f"📊 取到数据：{columns} {rows}")
 
-    # 2) pandas 在 Docker 沙箱里做进阶分析（SQLite 不好做的占比计算）
-    code, result = run_pandas_analysis(
+    # 2) pandas 在 Docker 沙箱里做进阶分析（带自我纠错）
+    result = run_pandas_analysis(
         client,
         settings.chat_model,
         DockerCodeExecutor(),
@@ -38,9 +38,12 @@ def main() -> None:
         columns,
         rows,
     )
-    print(f"\n🐍 沙箱里跑的 pandas 代码：\n{code}")
+    print(f"\n🐍 沙箱 pandas 代码（第 {result.attempts} 次尝试）：\n{result.code}")
     print("\n📈 分析结果：")
-    print(result.stdout if result.success else f"❌ {result.error}")
+    if result.success:
+        print(result.stdout)
+    else:
+        print(f"❌ 自我纠错 {result.attempts} 次后仍失败：\n{result.error}")
 
     get_client().flush()
 

@@ -1,15 +1,16 @@
-"""pandas 分析：把 SQL 结果交给 LLM 生成 pandas 代码，在沙箱里执行得到进阶结果。
+"""pandas 分析（带自我纠错）：LLM 生成 pandas 代码 → 沙箱执行 → 报错则把 traceback
+喂回模型改了重试（与 SQL 自我纠错同构）。
 
-数据怎么进沙箱（关键）：沙箱读不到主机数据，所以把结果序列化成 JSON 随代码注入，
+数据进沙箱（关键）：沙箱读不到主机数据，把结果序列化成 JSON 随代码注入，
 代码开头还原成 DataFrame `df`。
 """
 
 import json
 import re
+from dataclasses import dataclass
 
+from langfuse import observe
 from openai import OpenAI
-
-from insight.code_exec import ExecutionResult
 
 PANDAS_SYSTEM = """你是数据分析师，精通 pandas。
 会给你一个已加载好的 pandas DataFrame `df` 和一个分析问题。
@@ -36,8 +37,17 @@ df = pd.DataFrame(_payload["rows"], columns=_payload["columns"])
 """
 
 
+@dataclass
+class AnalysisResult:
+    code: str  # 最终/最后一次的 pandas 代码
+    success: bool
+    attempts: int  # 一共试了几次（含首次）
+    stdout: str = ""  # 成功时的输出
+    error: str = ""  # 失败时的报错
+
+
 def build_analysis_code(columns: list[str], rows: list[tuple], pandas_code: str) -> str:
-    """把"数据还原 preamble" + LLM 的 pandas 代码拼成可在沙箱里跑的完整脚本。"""
+    """把"数据还原 preamble" + pandas 代码拼成可在沙箱里跑的完整脚本。"""
     data = json.dumps({"columns": columns, "rows": rows})
     return _DATA_PREAMBLE.format(data=data) + "\n" + pandas_code
 
@@ -50,11 +60,10 @@ def _extract_code(text: str) -> str:
     return text.strip()
 
 
-def generate_pandas_code(
-    client: OpenAI, model: str, question: str, columns: list[str], rows: list[tuple]
-) -> str:
-    """让 LLM 针对 df 写 pandas 代码。"""
-    messages = [
+def build_pandas_messages(
+    question: str, columns: list[str], rows: list[tuple]
+) -> list[dict]:
+    return [
         {"role": "system", "content": PANDAS_SYSTEM},
         {
             "role": "user",
@@ -63,10 +72,14 @@ def generate_pandas_code(
             ),
         },
     ]
+
+
+def request_pandas_code(client: OpenAI, model: str, messages: list[dict]) -> str:
     resp = client.chat.completions.create(model=model, temperature=0, messages=messages)
     return _extract_code(resp.choices[0].message.content or "")
 
 
+@observe(name="pandas-analysis")
 def run_pandas_analysis(
     client: OpenAI,
     model: str,
@@ -74,8 +87,27 @@ def run_pandas_analysis(
     question: str,
     columns: list[str],
     rows: list[tuple],
-) -> tuple[str, ExecutionResult]:
-    """生成 pandas 代码 → 拼上数据 → 在 executor(沙箱) 里执行。返回 (代码, 结果)。"""
-    pandas_code = generate_pandas_code(client, model, question, columns, rows)
-    full_code = build_analysis_code(columns, rows, pandas_code)
-    return pandas_code, executor.run(full_code)
+    max_attempts: int = 3,
+) -> AnalysisResult:
+    """生成 pandas 代码 → 沙箱执行 → 报错则喂回 traceback 改了重试。"""
+    messages = build_pandas_messages(question, columns, rows)
+    code = ""
+    last_error = ""
+    for attempt in range(1, max_attempts + 1):
+        code = request_pandas_code(client, model, messages)
+        result = executor.run(build_analysis_code(columns, rows, code))
+        if result.success:
+            return AnalysisResult(code, True, attempt, stdout=result.stdout)
+        # 报错 → 把代码 + traceback 喂回，让模型改
+        last_error = result.error
+        messages.append({"role": "assistant", "content": code})
+        messages.append(
+            {
+                "role": "user",
+                "content": (
+                    f"上面的代码执行报错：\n{result.error}\n"
+                    f"请修正后重新输出 pandas 代码（只输出代码）。"
+                ),
+            }
+        )
+    return AnalysisResult(code, False, max_attempts, error=last_error)
