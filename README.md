@@ -113,11 +113,13 @@ InsightProject/
 │   └── eval/              # 评测层
 │       └── evaluation.py   #   EX 结果集比对（列序无关）
 ├── scripts/
-│   ├── ask.py             # demo（自然语言 → SQL → 结果）
-│   ├── analyze.py         # demo（SQL → 沙箱 pandas 进阶分析）
-│   ├── chart.py           # demo（SQL → 沙箱 matplotlib 画图 → chart.png）
-│   ├── init_db.py         # 生成示例电商库
-│   └── download/predict/score_spider.py   # Spider 评测流水线
+│   ├── init_db.py         # 生成示例电商库（前置步骤）
+│   ├── demos/             # 交互演示
+│   │   ├── ask.py         #   自然语言 → SQL → 结果
+│   │   ├── analyze.py     #   SQL → 沙箱 pandas 进阶分析
+│   │   └── chart.py       #   SQL → 沙箱 matplotlib 画图 → chart.png
+│   └── spider/            # Spider 评测流水线
+│       └── download / predict / score_spider.py
 ├── tests/                 # pytest（纠错 / 护栏 / EX / 代码执行 / 分析）
 ├── sandbox/Dockerfile     # 沙箱镜像（python + pandas + matplotlib + 中文字体，非 root）
 ├── docs/                  # PROJECT-SPEC、面试速通清单
@@ -139,12 +141,12 @@ uv sync
 
 # 3. 生成示例库 + text2SQL demo
 uv run scripts/init_db.py
-uv run scripts/ask.py "各品类的总销售额是多少？按从高到低排序。"
+uv run scripts/demos/ask.py "各品类的总销售额是多少？按从高到低排序。"
 
 # 4. 代码执行 / 画图 demo（需先构建沙箱镜像）
 docker build -t insight-sandbox sandbox/      # 一次（含 pandas/matplotlib/中文字体）
-uv run scripts/analyze.py                     # SQL → 沙箱 pandas 算占比
-uv run scripts/chart.py                       # SQL → 沙箱 matplotlib 画图（生成 chart.png）
+uv run scripts/demos/analyze.py               # SQL → 沙箱 pandas 算占比
+uv run scripts/demos/chart.py                 # SQL → 沙箱 matplotlib 画图（生成 chart.png）
 ```
 
 > **可观测（可选）**：自托管 Langfuse（官方仓库 `docker compose up`），设好 `LANGFUSE_PUBLIC_KEY/SECRET_KEY/HOST` 后，所有 LLM 调用会自动上报到 `http://localhost:3000`。
@@ -152,9 +154,9 @@ uv run scripts/chart.py                       # SQL → 沙箱 matplotlib 画图
 ## 📊 复现 Spider 评测
 
 ```bash
-uv run scripts/download_spider.py   # 下载偏难子集（99 题 / 20 库）
-uv run scripts/predict_spider.py    # 生成并冻结预测（调一次模型）
-uv run scripts/score_spider.py      # 计算 EX（不调模型，确定性）
+uv run scripts/spider/download_spider.py   # 下载偏难子集（99 题 / 20 库）
+uv run scripts/spider/predict_spider.py    # 生成并冻结预测（调一次模型）
+uv run scripts/spider/score_spider.py      # 计算 EX（不调模型，确定性）
 ```
 
 ## ✅ 测试
