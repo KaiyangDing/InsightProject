@@ -5,7 +5,7 @@
 
 from openai import OpenAI
 
-from insight.agents.agent_base import SelfCorrectingAgent
+from insight.agents.base import SelfCorrectingAgent
 from insight.tools.db import Database
 from insight.errors import SQLExecutionError
 from insight.agents.text2sql import build_messages, request_sql
