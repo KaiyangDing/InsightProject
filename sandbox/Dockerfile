@@ -1,9 +1,11 @@
 FROM python:3.13-slim
 
-# 分析要用 pandas
-RUN pip install --no-cache-dir pandas
+# 中文字体：否则 matplotlib 画中文标签会变成 □□
+RUN apt-get update && apt-get install -y --no-install-recommends fonts-wqy-zenhei \
+    && rm -rf /var/lib/apt/lists/*
 
-# 非 root 用户跑代码
+RUN pip install --no-cache-dir pandas matplotlib
+
 RUN useradd --create-home sandbox
 USER sandbox
 WORKDIR /home/sandbox

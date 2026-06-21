@@ -21,3 +21,6 @@ data/*.db
 
 # Spider 评测数据（可由 download_spider.py 重新下载）
 data/spider/
+
+# 生成的图表
+chart.png

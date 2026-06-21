@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from insight.analysis import build_analysis_code
+from insight.analysis import CHART_MARKER, build_analysis_code, extract_chart
 from insight.analysis_agent import CodeAnalysisAgent
 from insight.code_exec import CodeExecutor
 
@@ -55,3 +55,16 @@ def test_self_correction_recovers_from_bad_code():
     assert result.success
     assert result.attempts == 2
     assert "150" in result.result  # 成功时 result.result = stdout
+
+
+def test_extract_chart_parses_png():
+    import base64
+
+    fake_png = b"\x89PNG\r\n\x1a\nfakedata"
+    stdout = (
+        f"前面的文本\n{CHART_MARKER}{base64.b64encode(fake_png).decode()}\n后面的文本"
+    )
+    text, png = extract_chart(stdout)
+    assert png == fake_png
+    assert "前面的文本" in text and "后面的文本" in text
+    assert CHART_MARKER not in text

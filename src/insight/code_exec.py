@@ -81,6 +81,8 @@ class DockerCodeExecutor:
             "PYTHONUTF8=1",  # 容器内 UTF-8 输出
             "--env",
             "HOME=/tmp",  # 让需要写 home 的库落到 /tmp
+            "--env",
+            "MPLBACKEND=Agg",  # 容器无界面，matplotlib 用非交互后端
             self.image,
             "python",
             "-",  # 从 stdin 读代码执行（无需转义/挂载）
