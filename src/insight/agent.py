@@ -4,8 +4,8 @@
 """
 
 from dataclasses import dataclass
-
 from openai import OpenAI
+from langfuse import observe
 
 from insight.db import Database
 from insight.errors import SQLExecutionError
@@ -28,6 +28,7 @@ class Text2SQLAgent:
         self.db = db
         self.max_attempts = max_attempts
 
+    @observe(name="text2sql-agent")
     def run(self, question: str) -> Text2SQLResult:
         schema = self.db.get_schema_text()
         messages = build_messages(question, schema)

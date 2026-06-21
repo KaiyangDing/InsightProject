@@ -1,4 +1,4 @@
-"""text2SQL 演示（带自我纠错）：问题 → agent 循环（生成/执行/纠错） → 打印结果。
+"""text2SQL 演示（自我纠错 + Langfuse trace）：问题 → agent → 结果。
 
 用法：
     uv run scripts/ask.py
@@ -6,6 +6,8 @@
 """
 
 import sys
+
+from langfuse import get_client
 
 from insight.agent import Text2SQLAgent
 from insight.config import get_settings
@@ -29,17 +31,17 @@ def main() -> None:
     print(f"❓ 问题：{question}")
     try:
         result = agent.run(question)
+        print(f"\n🧠 SQL（第 {result.attempts} 次尝试成功）：\n{result.sql}")
+        print("\n📊 查询结果：")
+        print(result.columns)
+        for row in result.rows:
+            print(row)
+        if not result.rows:
+            print("（无数据）")
     except SQLExecutionError as e:
         print(f"\n❌ 自我纠错 {agent.max_attempts} 次后仍失败：\n{e}")
-        return
-
-    print(f"\n🧠 SQL（第 {result.attempts} 次尝试成功）：\n{result.sql}")
-    print("\n📊 查询结果：")
-    print(result.columns)
-    for row in result.rows:
-        print(row)
-    if not result.rows:
-        print("（无数据）")
+    finally:
+        get_client().flush()  # 短脚本退出前把缓冲的 trace 发出去
 
 
 if __name__ == "__main__":

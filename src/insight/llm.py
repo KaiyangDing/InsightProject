@@ -3,7 +3,7 @@
 以后模型路由、多 provider 适配都长在这里——现在先把"创建客户端"收口到一处。
 """
 
-from openai import OpenAI
+from langfuse.openai import OpenAI  # drop-in 包装：每次调用自动上报 trace
 
 from insight.config import Settings
 
