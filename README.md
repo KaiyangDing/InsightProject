@@ -96,19 +96,22 @@
 
 ```
 InsightProject/
-├── src/insight/
-│   ├── config.py          # 配置中心 get_settings()
-│   ├── paths.py           # 路径中心（锚定项目根，CWD 无关）
-│   ├── llm.py             # LLM 客户端工厂（含 Langfuse 自动 trace）
-│   ├── agent_base.py      # SelfCorrectingAgent 基类（生成→执行→纠错循环，只写一遍）
-│   ├── text2sql.py        # 问题 → SQL 生成（few-shot, temperature=0）
-│   ├── text2sql_agent.py  # Text2SQLAgent（SQL 自我纠错，薄子类）
-│   ├── analysis.py        # pandas 代码生成 + 数据注入 + 图表回传
-│   ├── analysis_agent.py  # CodeAnalysisAgent（沙箱 pandas 分析/画图，薄子类）
-│   ├── db.py              # 只读 SQLite 访问层
-│   ├── code_exec.py       # 代码执行器：子进程 / Docker 沙箱 两后端
-│   ├── errors.py          # 异常分层
-│   └── evaluation.py      # EX 结果集比对（列序无关）
+├── src/insight/            # 分层即包结构
+│   ├── config.py           # 基建：配置中心 get_settings()
+│   ├── paths.py            # 基建：路径中心（锚定项目根，CWD 无关）
+│   ├── errors.py           # 基建：异常分层（致命 vs 可恢复）
+│   ├── tools/              # 能力层：与外部世界打交道的工具
+│   │   ├── llm.py          #   LLM 客户端工厂（含 Langfuse 自动 trace）
+│   │   ├── db.py           #   只读 SQLite 访问层
+│   │   └── code_exec.py    #   代码执行器：子进程 / Docker 沙箱 两后端
+│   ├── agents/            # 生成 + 自我纠错编排
+│   │   ├── base.py         #   SelfCorrectingAgent 基类（循环只写一遍）+ AgentResult
+│   │   ├── text2sql.py     #   问题 → SQL 生成（few-shot, temperature=0）
+│   │   ├── text2sql_agent.py  # Text2SQLAgent（SQL 自我纠错，薄子类）
+│   │   ├── analysis.py     #   pandas 代码生成 + 数据注入 + 图表回传
+│   │   └── analysis_agent.py  # CodeAnalysisAgent（沙箱 pandas 分析/画图，薄子类）
+│   └── eval/              # 评测层
+│       └── evaluation.py   #   EX 结果集比对（列序无关）
 ├── scripts/
 │   ├── ask.py             # demo（自然语言 → SQL → 结果）
 │   ├── analyze.py         # demo（SQL → 沙箱 pandas 进阶分析）
@@ -120,7 +123,7 @@ InsightProject/
 ├── docs/                  # PROJECT-SPEC、面试速通清单
 └── pyproject.toml
 ```
-> 随着 Week 3 多智能体落地，`src/insight/` 会重构为 `tools/` `agents/` `eval/` 子包。
+> 分层即包结构：`tools/`（能力）·`agents/`（生成+编排）·`eval/`（评测），顶层留 `config/paths/errors` 基建；各子包 `__init__.py` 收口公共 API（如 `from insight.agents import Text2SQLAgent`）。
 
 ---
 
