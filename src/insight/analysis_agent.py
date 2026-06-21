@@ -1,0 +1,44 @@
+"""代码分析 agent：自我纠错循环的 pandas 实现（继承 SelfCorrectingAgent）。
+
+循环在 agent_base，这里只填三个钩子：建消息 / 生成代码 / 在沙箱执行。
+"""
+
+from openai import OpenAI
+
+from insight.agent_base import SelfCorrectingAgent
+from insight.analysis import (
+    build_analysis_code,
+    build_pandas_messages,
+    request_pandas_code,
+)
+
+
+class CodeAnalysisAgent(SelfCorrectingAgent):
+    def __init__(
+        self,
+        client: OpenAI,
+        model: str,
+        executor,
+        columns: list[str],
+        rows: list[tuple],
+        max_attempts: int = 3,
+    ):
+        super().__init__(max_attempts)
+        self.client = client
+        self.model = model
+        self.executor = executor
+        self.columns = columns
+        self.rows = rows
+
+    def initial_messages(self, question: str) -> list[dict]:
+        return build_pandas_messages(question, self.columns, self.rows)
+
+    def generate(self, messages: list[dict]) -> str:
+        return request_pandas_code(self.client, self.model, messages)
+
+    def execute(self, code: str) -> tuple[bool, object, str]:
+        r = self.executor.run(build_analysis_code(self.columns, self.rows, code))
+        return r.success, r.stdout, r.error
+
+    def feedback(self, error: str) -> str:
+        return f"上面的代码执行报错：\n{error}\n请修正后重新输出 pandas 代码（只输出代码）。"

@@ -1,11 +1,11 @@
-"""演示：SQL 取数 → 在 Docker 沙箱里用 pandas 做进阶分析。
+"""演示：SQL 取数 → 在 Docker 沙箱里用 pandas 做进阶分析（自我纠错）。
 
 用法：uv run scripts/analyze.py
 """
 
 from langfuse import get_client
 
-from insight.analysis import run_pandas_analysis
+from insight.analysis_agent import CodeAnalysisAgent
 from insight.code_exec import DockerCodeExecutor
 from insight.config import get_settings
 from insight.db import Database
@@ -29,19 +29,16 @@ def main() -> None:
     print(f"🗄️ SQL：{sql}")
     print(f"📊 取到数据：{columns} {rows}")
 
-    # 2) pandas 在 Docker 沙箱里做进阶分析（带自我纠错）
-    result = run_pandas_analysis(
-        client,
-        settings.chat_model,
-        DockerCodeExecutor(),
-        ANALYSIS_QUESTION,
-        columns,
-        rows,
+    # 2) pandas 在 Docker 沙箱里做进阶分析（自我纠错）
+    agent = CodeAnalysisAgent(
+        client, settings.chat_model, DockerCodeExecutor(), columns, rows
     )
-    print(f"\n🐍 沙箱 pandas 代码（第 {result.attempts} 次尝试）：\n{result.code}")
+    result = agent.run(ANALYSIS_QUESTION)
+
+    print(f"\n🐍 沙箱 pandas 代码（第 {result.attempts} 次尝试）：\n{result.output}")
     print("\n📈 分析结果：")
     if result.success:
-        print(result.stdout)
+        print(result.result)  # 成功时 result.result = stdout
     else:
         print(f"❌ 自我纠错 {result.attempts} 次后仍失败：\n{result.error}")
 

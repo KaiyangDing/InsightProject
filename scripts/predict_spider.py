@@ -6,7 +6,7 @@
 import json
 import sys
 
-from insight.agent import Text2SQLAgent
+from insight.text2sql_agent import Text2SQLAgent
 from insight.config import get_settings
 from insight.db import Database
 from insight.llm import get_chat_client
