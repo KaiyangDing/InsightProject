@@ -8,9 +8,9 @@
 import json
 import sys
 
-from insight.db import Database
+from insight.tools.db import Database
 from insight.errors import SQLExecutionError
-from insight.evaluation import same_result
+from insight.eval.evaluation import same_result
 from insight.paths import DATA_DIR
 
 SPIDER_DIR = DATA_DIR / "spider"

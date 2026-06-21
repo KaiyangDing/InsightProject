@@ -5,7 +5,7 @@ import sqlite3
 
 import pytest
 
-from insight.db import Database
+from insight.tools.db import Database
 
 
 def pytest_configure(config):

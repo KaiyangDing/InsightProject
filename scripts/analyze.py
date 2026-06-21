@@ -5,12 +5,12 @@
 
 from langfuse import get_client
 
-from insight.analysis_agent import CodeAnalysisAgent
-from insight.code_exec import DockerCodeExecutor
+from insight.agents.analysis_agent import CodeAnalysisAgent
+from insight.tools.code_exec import DockerCodeExecutor
 from insight.config import get_settings
-from insight.db import Database
-from insight.llm import get_chat_client
-from insight.text2sql import build_messages, request_sql
+from insight.tools.db import Database
+from insight.tools.llm import get_chat_client
+from insight.agents.text2sql import build_messages, request_sql
 
 SQL_QUESTION = "每个品类的总销售额"
 ANALYSIS_QUESTION = "算出每个品类的销售额占总销售额的百分比，按占比从高到低排序"

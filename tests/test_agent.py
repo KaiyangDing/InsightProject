@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from insight.text2sql_agent import Text2SQLAgent
+from insight.agents.text2sql_agent import Text2SQLAgent
 
 
 class FakeLLMClient:

@@ -2,9 +2,9 @@
 
 from types import SimpleNamespace
 
-from insight.analysis import CHART_MARKER, build_analysis_code, extract_chart
-from insight.analysis_agent import CodeAnalysisAgent
-from insight.code_exec import CodeExecutor
+from insight.agents.analysis import CHART_MARKER, build_analysis_code, extract_chart
+from insight.agents.analysis_agent import CodeAnalysisAgent
+from insight.tools.code_exec import CodeExecutor
 
 
 class FakeLLMClient:

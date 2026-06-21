@@ -5,14 +5,14 @@
 
 from langfuse import get_client
 
-from insight.analysis import extract_chart
-from insight.analysis_agent import CodeAnalysisAgent
-from insight.code_exec import DockerCodeExecutor
+from insight.agents.analysis import extract_chart
+from insight.agents.analysis_agent import CodeAnalysisAgent
+from insight.tools.code_exec import DockerCodeExecutor
 from insight.config import get_settings
-from insight.db import Database
-from insight.llm import get_chat_client
+from insight.tools.db import Database
+from insight.tools.llm import get_chat_client
 from insight.paths import PROJECT_ROOT
-from insight.text2sql import build_messages, request_sql
+from insight.agents.text2sql import build_messages, request_sql
 
 SQL_QUESTION = "每个品类的总销售额"
 CHART_QUESTION = "用柱状图展示各品类的总销售额（category 作 x 轴，total_sales 作 y 轴）"

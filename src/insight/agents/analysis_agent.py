@@ -5,8 +5,8 @@
 
 from openai import OpenAI
 
-from insight.agent_base import SelfCorrectingAgent
-from insight.analysis import (
+from insight.agents.agent_base import SelfCorrectingAgent
+from insight.agents.analysis import (
     build_analysis_code,
     build_pandas_messages,
     request_pandas_code,

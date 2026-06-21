@@ -5,7 +5,7 @@ import subprocess
 
 import pytest
 
-from insight.code_exec import DockerCodeExecutor, CodeExecutor
+from insight.tools.code_exec import DockerCodeExecutor, CodeExecutor
 
 
 def _sandbox_ready() -> bool:

@@ -6,12 +6,12 @@
 import json
 import sys
 
-from insight.text2sql_agent import Text2SQLAgent
+from insight.agents.text2sql_agent import Text2SQLAgent
 from insight.config import get_settings
-from insight.db import Database
-from insight.llm import get_chat_client
+from insight.tools.db import Database
+from insight.tools.llm import get_chat_client
 from insight.paths import DATA_DIR
-from insight.text2sql import build_messages, request_sql
+from insight.agents.text2sql import build_messages, request_sql
 
 SPIDER_DIR = DATA_DIR / "spider"
 

@@ -1,6 +1,6 @@
 """测试 EX 结果集比对（evaluation.same_result）。"""
 
-from insight.evaluation import same_result
+from insight.eval.evaluation import same_result
 
 
 def test_identical_matches():
