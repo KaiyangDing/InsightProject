@@ -2,6 +2,7 @@
 
 from types import SimpleNamespace
 
+from insight.agents.critic import Critique
 from insight.agents.orchestrator import Orchestrator, Tool
 
 
@@ -120,3 +121,60 @@ def test_tool_error_is_fed_back_not_crash():
 
     assert result.answer == "已处理错误"
     assert result.steps == 2
+
+
+class FakeCritic:
+    """按预设依次返回 Critique；记录每次 review 的入参便于断言。"""
+
+    def __init__(self, verdicts: list):
+        self._verdicts = list(verdicts)
+        self.seen = []
+
+    def review(self, question, answer, evidence):
+        self.seen.append((question, answer, evidence))
+        return self._verdicts.pop(0)
+
+
+def test_critic_approves_returns_answer():
+    """候选答过 Critic 一次即通过 → 直接返回。"""
+    llm = FakeOrchestratorLLM([_response(content="数码最高")])
+    critic = FakeCritic([Critique(True, "通过")])
+    orch = Orchestrator(llm, "fake-model", [_echo_tool([])], critic=critic)
+
+    result = orch.run("哪个品类最高")
+
+    assert result.answer == "数码最高"
+    assert result.reviews == 1
+    assert result.steps == 1
+    assert critic.seen[0][1] == "数码最高"  # Critic 审到的就是候选答
+
+
+def test_critic_rejects_then_revises():
+    """第1次候选被打回 → 意见喂回 → 第2次候选通过。"""
+    llm = FakeOrchestratorLLM([_response(content="v1"), _response(content="v2")])
+    critic = FakeCritic([Critique(False, "口径不对，改"), Critique(True, "ok")])
+    orch = Orchestrator(llm, "fake-model", [_echo_tool([])], critic=critic)
+
+    result = orch.run("问题")
+
+    assert result.answer == "v2"
+    assert result.reviews == 2
+    assert result.steps == 2
+    assert critic.seen[0][1] == "v1" and critic.seen[1][1] == "v2"
+
+
+def test_review_budget_caps_revisions():
+    """Critic 一直打回 → 到 max_reviews 后直接采纳最新候选（fail-open，不死循环）。"""
+    llm = FakeOrchestratorLLM(
+        [_response(content="v1"), _response(content="v2"), _response(content="v3")]
+    )
+    critic = FakeCritic([Critique(False, "改"), Critique(False, "再改")])
+    orch = Orchestrator(
+        llm, "fake-model", [_echo_tool([])], critic=critic, max_reviews=2
+    )
+
+    result = orch.run("问题")
+
+    assert result.answer == "v3"  # 第3次候选未再审，直接采纳
+    assert result.reviews == 2  # 只审了 2 次（预算上限）
+    assert result.steps == 3

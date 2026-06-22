@@ -52,6 +52,7 @@ class OrchestratorResult:
     answer: str
     steps: int  # 一共转了几步
     tool_calls: list  # 调了哪些工具（名字+入参），用于复盘/归因
+    reviews: int = 0  # 经过几轮 Critic 审查（默认 0，向后兼容）
 
 
 ORCHESTRATOR_SYSTEM = """你是一个数据分析任务的编排器（orchestrator）。
@@ -63,15 +64,27 @@ ORCHESTRATOR_SYSTEM = """你是一个数据分析任务的编排器（orchestrat
 - 最终回答必须忠实于工具返回的真实结果。
 """
 
+REVISE_TEMPLATE = (
+    "审查未通过：{feedback}\n请据此修正你的最终回答；如需核实数据可再调用工具。"
+)
+
 
 class Orchestrator:
     def __init__(
-        self, client: OpenAI, model: str, tools: list[Tool], max_steps: int = 6
+        self,
+        client: OpenAI,
+        model: str,
+        tools: list[Tool],
+        max_steps: int = 6,
+        critic=None,  # 鸭子类型：任何带 .review(question, answer, evidence) 的对象
+        max_reviews: int = 2,
     ):
         self.client = client
         self.model = model
-        self.tools = {t.name: t for t in tools}  # 名字 → Tool，便于分发
+        self.tools = {t.name: t for t in tools}
         self.max_steps = max_steps
+        self.critic = critic
+        self.max_reviews = max_reviews
         self.workspace = Workspace()
 
     @observe(name="orchestrator")
@@ -82,21 +95,45 @@ class Orchestrator:
         ]
         tool_schemas = [t.schema() for t in self.tools.values()]
         called = []
+        reviews_done = 0
 
         for step in range(1, self.max_steps + 1):
             resp = self.client.chat.completions.create(
                 model=self.model,
                 temperature=0,
                 messages=messages,
-                tools=tool_schemas,  # ← 把工具清单交给模型
+                tools=tool_schemas,
             )
             msg = resp.choices[0].message
 
-            # 模型不再要工具 → 这就是最终回答，结束
+            # 模型不再要工具 → 候选最终回答
             if not msg.tool_calls:
-                return OrchestratorResult(msg.content or "", step, called)
+                candidate = msg.content or ""
 
-            # 把助手这条（含 tool_calls）加回历史——tool 结果必须紧跟在它后面
+                # 没挂 Critic，或评审预算用尽 → 直接采纳
+                if self.critic is None or reviews_done >= self.max_reviews:
+                    return OrchestratorResult(candidate, step, called, reviews_done)
+
+                # 过 Critic 闸门：用"工具返回的真实数据"当证据
+                evidence = "\n\n".join(
+                    m["content"] for m in messages if m.get("role") == "tool"
+                )
+                critique = self.critic.review(question, candidate, evidence)
+                reviews_done += 1
+                if critique.approved:
+                    return OrchestratorResult(candidate, step, called, reviews_done)
+
+                # 不通过 → 候选答 + 审查意见一起喂回，继续修
+                messages.append({"role": "assistant", "content": candidate})
+                messages.append(
+                    {
+                        "role": "user",
+                        "content": REVISE_TEMPLATE.format(feedback=critique.feedback),
+                    }
+                )
+                continue
+
+            # 有 tool_calls → 执行工具（与 Step 1 相同）
             messages.append(
                 {
                     "role": "assistant",
@@ -114,8 +151,6 @@ class Orchestrator:
                     ],
                 }
             )
-
-            # 逐个执行工具，结果作为 role:"tool" 消息喂回（靠 tool_call_id 对应）
             for tc in msg.tool_calls:
                 name = tc.function.name
                 args = json.loads(tc.function.arguments or "{}")
@@ -132,7 +167,6 @@ class Orchestrator:
                     {"role": "tool", "tool_call_id": tc.id, "content": result}
                 )
 
-        # 预算耗尽仍没给终答
         return OrchestratorResult(
-            "（达到步数上限仍未得出结论）", self.max_steps, called
+            "（达到步数上限仍未得出结论）", self.max_steps, called, reviews_done
         )
