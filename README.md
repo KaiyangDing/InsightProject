@@ -8,7 +8,7 @@
 
 ## ✨ 项目亮点
 
-- 🧭 **LLM 自主编排（multi-agent supervisor）** —— 编排器把 SQL / 分析 / 审查子 agent 当工具，用**原生 function calling** 自主决定调谁、调几次、何时停（带 `max_steps` 预算）；子 agent 间的大数据走 **Workspace 黑板**，回给 LLM 的只是摘要。
+- 🧭 **LLM 自主编排（multi-agent supervisor）** —— 编排器用**原生 function calling** 把 SQL / 分析子 agent 当工具，自主决定调谁、调几次、何时停（带 `max_steps` 预算）；收尾由 **Report** 从证据写结构化报告、**Critic** 把关忠实性——**五角色齐**（Orchestrator/SQL/Analyst/Critic/Report）。子 agent 间大数据走 **Workspace 黑板**，回给 LLM 只是摘要。
 - 🕵️ **Critic 忠实性闸门** —— 终答前强制过 Critic 审查（拿真实工具结果当证据），不通过把意见喂回重写（`max_reviews` 封顶）——系统级自我纠错，专治"编数 / 偷换口径"。
 - 🧠 **自我纠错 Agent** —— `plan → act → observe → 修正重试` 的循环，带步数预算"刹车"；SQL 与代码分析两个 agent **共用一个 `SelfCorrectingAgent` 基类**（循环只写一遍）。
 - 🔒 **只读 SQL 执行** —— SQLite 以 URI `mode=ro` 打开，从根上杜绝写操作；附 `SELECT` 护栏与行数上限。
@@ -18,7 +18,7 @@
 - 📐 **贴近官方的 EX 度量** —— 列顺序无关的结果集比对（排列匹配），并对简化做**诚实标注**。
 - 🧩 **清晰的异常分层** —— 致命错 vs Agent 可恢复错，由异常类型决定处理策略。
 - 🔬 **假设驱动的实验** —— 先分析错因、预测干预效果，再隔离变量做对照实验验证。
-- ✅ **核心逻辑全测试** —— pytest（32 个），用"假 LLM"做确定性测试；Docker 相关测试无环境时自动跳过。
+- ✅ **核心逻辑全测试** —— pytest（35 个），用"假 LLM"做确定性测试；Docker 相关测试无环境时自动跳过。
 
 ---
 

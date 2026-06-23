@@ -76,8 +76,9 @@ class Orchestrator:
         model: str,
         tools: list[Tool],
         max_steps: int = 6,
-        critic=None,  # 鸭子类型：任何带 .review(question, answer, evidence) 的对象
+        critic=None,
         max_reviews: int = 2,
+        report=None,  # 鸭子类型：任何带 .write(question, evidence) 的对象
     ):
         self.client = client
         self.model = model
@@ -85,6 +86,7 @@ class Orchestrator:
         self.max_steps = max_steps
         self.critic = critic
         self.max_reviews = max_reviews
+        self.report = report
         self.workspace = Workspace()
 
     @observe(name="orchestrator")
@@ -106,24 +108,30 @@ class Orchestrator:
             )
             msg = resp.choices[0].message
 
-            # 模型不再要工具 → 候选最终回答
+            # 模型不再要工具 → 该收尾了
             if not msg.tool_calls:
-                candidate = msg.content or ""
+                # 证据 = 工具返回的真实数据（给 Report 写 / 给 Critic 审）
+                evidence = "\n\n".join(
+                    m["content"] for m in messages if m.get("role") == "tool"
+                )
+                # 有 Report agent → 用它从证据合成报告；否则用编排器自己的话
+                candidate = (
+                    self.report.write(question, evidence)
+                    if self.report is not None
+                    else (msg.content or "")
+                )
 
                 # 没挂 Critic，或评审预算用尽 → 直接采纳
                 if self.critic is None or reviews_done >= self.max_reviews:
                     return OrchestratorResult(candidate, step, called, reviews_done)
 
-                # 过 Critic 闸门：用"工具返回的真实数据"当证据
-                evidence = "\n\n".join(
-                    m["content"] for m in messages if m.get("role") == "tool"
-                )
+                # 过 Critic 闸门（审的是 candidate，即报告）
                 critique = self.critic.review(question, candidate, evidence)
                 reviews_done += 1
                 if critique.approved:
                     return OrchestratorResult(candidate, step, called, reviews_done)
 
-                # 不通过 → 候选答 + 审查意见一起喂回，继续修
+                # 不通过 → 候选 + 审查意见一起喂回，继续修
                 messages.append({"role": "assistant", "content": candidate})
                 messages.append(
                     {

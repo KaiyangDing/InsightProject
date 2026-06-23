@@ -4,6 +4,7 @@ from types import SimpleNamespace
 
 from insight.agents.critic_agent import Critique
 from insight.agents.orchestrator import Orchestrator, Tool
+from insight.agents.report_agent import ReportAgent
 
 
 # ---- 伪造"OpenAI 风格响应"的小助手 ----
@@ -178,3 +179,49 @@ def test_review_budget_caps_revisions():
     assert result.answer == "v3"  # 第3次候选未再审，直接采纳
     assert result.reviews == 2  # 只审了 2 次（预算上限）
     assert result.steps == 3
+
+
+class FakeReport:
+    """假 Report：记录入参，返回预设报告文本。"""
+
+    def __init__(self, text):
+        self.text = text
+        self.seen = []
+
+    def write(self, question, evidence):
+        self.seen.append((question, evidence))
+        return self.text
+
+
+def test_report_agent_writes(fake_llm):
+    """ReportAgent.write 把模型输出原样作为报告返回。"""
+    report = ReportAgent(fake_llm(["最终报告"]), "m")
+    assert report.write("问题", "证据") == "最终报告"
+
+
+def test_orchestrator_uses_report_agent():
+    """挂了 Report → 终答用 Report 从证据写的，而非编排器自己的话。"""
+    llm = FakeOrchestratorLLM([_response(content="编排器草稿")])
+    report = FakeReport("结构化报告")
+    orch = Orchestrator(llm, "fake-model", [_echo_tool([])], report=report)
+
+    result = orch.run("问题")
+
+    assert result.answer == "结构化报告"  # 用了 Report，不是 msg.content
+    assert result.steps == 1
+
+
+def test_critic_reviews_the_report():
+    """Report + Critic 同挂：Critic 审的是报告，不是编排器草稿。"""
+    llm = FakeOrchestratorLLM([_response(content="草稿")])
+    report = FakeReport("报告X")
+    critic = FakeCritic([Critique(True, "ok")])
+    orch = Orchestrator(
+        llm, "fake-model", [_echo_tool([])], critic=critic, report=report
+    )
+
+    result = orch.run("问题")
+
+    assert result.answer == "报告X"
+    assert result.reviews == 1
+    assert critic.seen[0][1] == "报告X"  # critic 拿到的候选 = 报告
