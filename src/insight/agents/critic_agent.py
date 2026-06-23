@@ -63,7 +63,7 @@ CRITIQUE_TOOL = {
 }
 
 
-class Critic:
+class CriticAgent:
     def __init__(self, client: OpenAI, model: str):
         self.client = client
         self.model = model

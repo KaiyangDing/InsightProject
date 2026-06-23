@@ -2,7 +2,7 @@
 
 from types import SimpleNamespace
 
-from insight.agents.critic import Critique
+from insight.agents.critic_agent import Critique
 from insight.agents.orchestrator import Orchestrator, Tool
 
 

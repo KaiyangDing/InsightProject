@@ -9,8 +9,11 @@ from openai import OpenAI
 from insight.agents.orchestrator import Tool, Workspace
 from insight.agents.text2sql_agent import Text2SQLAgent
 from insight.tools.db import Database
+from insight.agents.analysis import extract_chart
+from insight.agents.analysis_agent import CodeAnalysisAgent
 
 SQL_RESULT_KEY = "last_sql_result"  # workspace 里存最近一次 SQL 结果的 key
+CHART_KEY = "last_chart"  # workspace 里存最近一次分析产生的图（PNG bytes）
 
 
 def make_sql_tool(client: OpenAI, model: str, db: Database) -> Tool:
@@ -41,6 +44,44 @@ def make_sql_tool(client: OpenAI, model: str, db: Database) -> Tool:
                 "question": {
                     "type": "string",
                     "description": "单一明确的自然语言取数问题（中文），如'每个品类的总销售额'。",
+                }
+            },
+            "required": ["question"],
+        },
+        handler=handler,
+    )
+
+
+def make_analyst_tool(client: OpenAI, model: str, executor) -> Tool:
+    def handler(workspace: Workspace, question: str) -> str:
+        data = workspace.get(SQL_RESULT_KEY)
+        if data is None:  # 前置条件守卫：还没取数
+            return "还没有可分析的数据，请先用 run_sql 取数后再调用本工具。"
+
+        columns, rows = data
+        result = CodeAnalysisAgent(client, model, executor, columns, rows).run(question)
+        if not result.success:
+            return f"分析失败（自我纠错 {result.attempts} 次后）：{result.error}"
+
+        text, png = extract_chart(result.result)  # result.result = 沙箱 stdout
+        if png is not None:
+            workspace.put(CHART_KEY, png)  # 图存黑板，不进 LLM 上下文
+        note = "\n（已生成图表，保存在 workspace）" if png else ""
+        return f"分析结果：\n{text}{note}"
+
+    return Tool(
+        name="analyze_data",
+        description=(
+            "对 run_sql 取到的数据做进阶分析：用 pandas 在安全沙箱里执行，"
+            "可算占比/排序/聚合等，也能用 matplotlib 画图。"
+            "必须先用 run_sql 取数后再调用本工具。"
+        ),
+        parameters={
+            "type": "object",
+            "properties": {
+                "question": {
+                    "type": "string",
+                    "description": "对已取到的数据要做的分析或画图要求（中文）。",
                 }
             },
             "required": ["question"],
