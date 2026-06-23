@@ -2,6 +2,7 @@
 
 import os
 import sqlite3
+from types import SimpleNamespace
 
 import pytest
 
@@ -36,3 +37,24 @@ def sample_db(tmp_path) -> Database:
     conn.commit()
     conn.close()
     return Database(str(db_file))
+
+
+class FakeLLMClient:
+    """假 OpenAI 客户端：按脚本依次返回 content（确定性测试用）。"""
+
+    def __init__(self, replies):
+        self._replies = list(replies)
+        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
+
+    def _create(self, **kwargs):
+        return SimpleNamespace(
+            choices=[
+                SimpleNamespace(message=SimpleNamespace(content=self._replies.pop(0)))
+            ]
+        )
+
+
+@pytest.fixture
+def fake_llm():
+    """工厂夹具：fake_llm([回复1, 回复2, ...]) → 一个按序吐 content 的假客户端。"""
+    return FakeLLMClient

@@ -68,7 +68,7 @@ class CriticAgent:
         self.client = client
         self.model = model
 
-    @observe(name="critic")
+    @observe(name="critic-agent")
     def review(self, question: str, answer: str, evidence: str) -> Critique:
         messages = [
             {"role": "system", "content": CRITIC_SYSTEM},

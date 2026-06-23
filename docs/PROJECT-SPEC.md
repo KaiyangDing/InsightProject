@@ -139,6 +139,7 @@ plan → act(tool call) → observe(结果/报错) → reflect(够了吗?对吗?
 ### 5.1 Orchestrator（编排/调度）
 - 职责：理解用户问题、拆解成子任务、分派给下游 agent、维护全局状态、控制预算、判定终止。
 - 关键设计：用 LangGraph 状态机表达；关键控制流（终止条件、预算、Critic 回环）手写以显工程能力。
+- ✅ **实际实现（Week 3）**：未用 LangGraph，**手写 LLM supervisor**——子 agent 以 **agents-as-tools** 暴露给编排器，用 OpenAI **原生 function calling** 自主决定调用顺序/次数/终止；`max_steps` 预算 + 工具异常喂回兜底；子 agent 间大数据走 `Workspace` 黑板。控制流全手写（不依赖框架），更能展示工程能力。
 
 ### 5.2 SQL / Code Agent（执行）
 - 职责：根据子任务生成 SQL 或 Python，调用沙箱执行，读结果，必要时自我纠错重试。
@@ -151,6 +152,7 @@ plan → act(tool call) → observe(结果/报错) → reflect(够了吗?对吗?
 ### 5.4 Critic Agent（质检）
 - 职责：审查结论的逻辑/统计严谨性，做反事实校验（换口径、查样本量、找混淆变量），可打回重做。
 - 关键设计：独立 prompt/角色；有"打回"权限但受回环次数上限约束。
+- ✅ **实际实现（Week 3）**：`CriticAgent` 作为编排器的**终答闸门**——候选答 + 真实工具结果（证据）→ 审忠实性；裁决用**强制 `tool_choice`** 拿结构化输出；不通过把意见喂回重写、`max_reviews` 封顶；编排器靠**鸭子类型**接它（不耦合）。
 
 ### 5.5 Report Agent（成稿）
 - 职责：汇总成最终报告：结论摘要 + 图表 + 论证链路 + 数据出处 + 局限说明。

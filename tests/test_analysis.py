@@ -1,23 +1,8 @@
 """测试 pandas 分析：数据注入（build_analysis_code）+ 自我纠错（CodeAnalysisAgent）。"""
 
-from types import SimpleNamespace
-
 from insight.agents.analysis import CHART_MARKER, build_analysis_code, extract_chart
 from insight.agents.analysis_agent import CodeAnalysisAgent
 from insight.tools.code_exec import CodeExecutor
-
-
-class FakeLLMClient:
-    def __init__(self, replies):
-        self._replies = list(replies)
-        self.chat = SimpleNamespace(completions=SimpleNamespace(create=self._create))
-
-    def _create(self, **kwargs):
-        return SimpleNamespace(
-            choices=[
-                SimpleNamespace(message=SimpleNamespace(content=self._replies.pop(0)))
-            ]
-        )
 
 
 def test_data_injected_and_computed():
@@ -40,12 +25,12 @@ def test_chinese_data_round_trips():
     assert "True" in r.stdout
 
 
-def test_self_correction_recovers_from_bad_code():
+def test_self_correction_recovers_from_bad_code(fake_llm):
     """第 1 次坏代码 → traceback 喂回 → 第 2 次好代码 → 成功。"""
     bad = "print(df['nonexistent'])"  # KeyError
     good = "print(int(df['total'].sum()))"
     agent = CodeAnalysisAgent(
-        FakeLLMClient([bad, good]),
+        fake_llm([bad, good]),
         "fake-model",
         CodeExecutor(),
         ["total"],
