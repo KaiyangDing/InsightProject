@@ -1,11 +1,12 @@
 """text2SQL agent：自我纠错循环的 SQL 实现（继承 SelfCorrectingAgent）。
 
-循环在 agent_base，这里只填三个钩子：建消息 / 生成 SQL / 执行 SQL。
+循环在 base._run，这里填三个钩子 + 一个带名字的 run（用于 trace 区分）。
 """
 
+from langfuse import observe
 from openai import OpenAI
 
-from insight.agents.base import SelfCorrectingAgent
+from insight.agents.base import AgentResult, SelfCorrectingAgent
 from insight.tools.db import Database
 from insight.errors import SQLExecutionError
 from insight.agents.text2sql import build_messages, request_sql
@@ -17,6 +18,10 @@ class Text2SQLAgent(SelfCorrectingAgent):
         self.client = client
         self.model = model
         self.db = db
+
+    @observe(name="text2sql-agent")
+    def run(self, question: str) -> AgentResult:
+        return self._run(question)
 
     def initial_messages(self, question: str) -> list[dict]:
         return build_messages(question, self.db.get_schema_text())

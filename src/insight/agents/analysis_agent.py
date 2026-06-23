@@ -1,11 +1,12 @@
 """代码分析 agent：自我纠错循环的 pandas 实现（继承 SelfCorrectingAgent）。
 
-循环在 agent_base，这里只填三个钩子：建消息 / 生成代码 / 在沙箱执行。
+循环在 base._run，这里填三个钩子 + 一个带名字的 run（用于 trace 区分）。
 """
 
+from langfuse import observe
 from openai import OpenAI
 
-from insight.agents.base import SelfCorrectingAgent
+from insight.agents.base import AgentResult, SelfCorrectingAgent
 from insight.agents.analysis import (
     build_analysis_code,
     build_pandas_messages,
@@ -29,6 +30,10 @@ class CodeAnalysisAgent(SelfCorrectingAgent):
         self.executor = executor
         self.columns = columns
         self.rows = rows
+
+    @observe(name="code-analysis-agent")
+    def run(self, question: str) -> AgentResult:
+        return self._run(question)
 
     def initial_messages(self, question: str) -> list[dict]:
         return build_pandas_messages(question, self.columns, self.rows)

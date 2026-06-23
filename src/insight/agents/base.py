@@ -1,12 +1,11 @@
 """通用自我纠错 Agent 基类：生成 → 执行 → 报错喂回改了重试（带预算）。
 
-循环只写这一遍，SQL agent 与代码分析 agent 共用；子类只填三个钩子。
+循环只写在 _run 里，SQL agent 与代码分析 agent 共用；
+各子类用一个带 @observe(name=...) 的薄 run 去包 _run，从而在 trace 里有各自的名字。
 """
 
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-
-from langfuse import observe
 
 
 @dataclass
@@ -38,8 +37,8 @@ class SelfCorrectingAgent(ABC):
         """报错后追加给模型的纠错提示；子类可覆盖。"""
         return f"上面的输出执行报错：\n{error}\n请修正后重新输出。"
 
-    @observe(name="self-correcting-agent")
-    def run(self, task: str) -> AgentResult:
+    def _run(self, task: str) -> AgentResult:
+        """生成→执行→报错喂回重试（带预算）。循环只写这一遍；子类用带 @observe 的 run 包它。"""
         messages = self.initial_messages(task)
         output = ""
         last_error = ""

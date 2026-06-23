@@ -225,3 +225,15 @@ def test_critic_reviews_the_report():
     assert result.answer == "报告X"
     assert result.reviews == 1
     assert critic.seen[0][1] == "报告X"  # critic 拿到的候选 = 报告
+
+
+def test_budget_returns_last_candidate():
+    """预算耗尽但中途产出过候选 → 返回最近候选，而非无用兜底串。"""
+    llm = FakeOrchestratorLLM([_response(content="候选1"), _response(content="候选2")])
+    critic = FakeCritic([Critique(False, "改"), Critique(False, "再改")])
+    orch = Orchestrator(
+        llm, "fake-model", [_echo_tool([])], critic=critic, max_steps=2, max_reviews=5
+    )
+    result = orch.run("q")
+    assert result.answer == "候选2"  # 最近一次候选，不是"步数上限"
+    assert result.steps == 2
