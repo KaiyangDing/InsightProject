@@ -14,6 +14,7 @@ from insight.agents.analysis_agent import CodeAnalysisAgent
 
 SQL_RESULT_KEY = "last_sql_result"  # workspace 里存最近一次 SQL 结果的 key
 CHART_KEY = "last_chart"  # workspace 里存最近一次分析产生的图（PNG bytes）
+SQL_ROW_CAP = 100  # 必须与 db.run_query 的默认 max_rows 一致；取满即视为"可能被截断"
 
 
 def make_sql_tool(
@@ -29,11 +30,28 @@ def make_sql_tool(
         columns, rows = result.result
         workspace.put(SQL_RESULT_KEY, (columns, rows))  # 真身放黑板，供下游 agent 取
 
+        n = len(rows)
         preview = "\n".join(str(r) for r in rows[:10])
-        more = f"\n…(共 {len(rows)} 行，仅显示前 10 行)" if len(rows) > 10 else ""
+        if n >= SQL_ROW_CAP:
+            # 取满上限 = 极可能被截断。绝不能说"完整"，要把它赶回 SQL 里聚合，
+            # 否则下游 analyze_data 会在残缺样本上统计、结果失真。
+            more = (
+                f"\n⚠️ 结果已达取数上限 {SQL_ROW_CAP} 行、**很可能被截断**，这不是完整数据。"
+                f"\n若你要的是整体统计或按某维度分组对比，请改为让 run_sql **在 SQL 里直接聚合**"
+                f"（GROUP BY 出每组统计量），不要拉原始明细再交给 analyze_data 分组。"
+            )
+        elif n > 10:
+            # 未截断、但行数较多：真身已在 workspace，赶它去 analyze_data，别重复查。
+            more = (
+                f"\n…(此处仅预览前 10 行)。完整 {n} 行已存入工作区(workspace)。"
+                f"\n⚠️ 若要对全部数据排序/聚合/对比/找极值/画图，请调用 analyze_data"
+                f"（它能读到全部 {n} 行）；不要为了'看全数据'而重复 run_sql 同一张查询。"
+            )
+        else:
+            more = ""
         return (
             f"已执行 SQL：\n{result.output}\n\n"
-            f"列：{columns}\n返回 {len(rows)} 行：\n{preview}{more}"
+            f"列：{columns}\n返回 {n} 行：\n{preview}{more}"
         )
 
     return Tool(

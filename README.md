@@ -18,7 +18,7 @@
 - 📊 **可复现的评测** —— text2SQL 侧生成与打分**分离**（冻结预测 → 确定性打分）消除噪声；多智能体侧用 **LLM-as-judge** 评报告的忠实性/相关性，并做 Critic 有效性 A/B。
 - 📐 **贴近官方的 EX 度量** —— 列顺序无关的结果集比对（排列匹配），并对简化做**诚实标注**。
 - 🧩 **清晰的异常分层** —— 致命错 vs Agent 可恢复错，由异常类型决定处理策略。
-- 🔬 **假设驱动的实验** —— 先分析错因、预测干预效果，再隔离变量做对照实验验证。
+- 🔬 **假设驱动的实验 + 自我证伪** —— 先分析错因、预测效果、隔离变量做对照；并**主动给多 agent 建单 agent 基线唱反调**——用分角色 trace + 真值揪出三个数据管道 bug，诚实结论：中等任务单 agent 更省更优、两套架构加固后殊途同归。
 - ✅ **核心逻辑全测试** —— pytest（47 个），用"假 LLM"做确定性测试；Docker 相关测试无环境时自动跳过。
 
 ---
@@ -73,6 +73,35 @@
 > - **1 份（品类分析）judge 给高了**：销售额偏 ~0.5%，因 analyst 在 join 评价表时**丢掉了无评价订单**，把"有评价订单的销售额"当成品类总销售额报出。
 >
 > **关键结论：`judge 5/5 ≠ 数字对`。** LLM-as-judge 测的是"报告 vs 证据"的**忠实性**——报告忠实复述了 analyst 算出的（子集）数字，裁判没有真值、看不出上游算错。**这恰好证明 judge 测忠实性、测不出正确性**：它和 EX（正确性）互补，高风险场景必须配 ground-truth 核对。复现：`uv run scripts/eval/olist_judge.py`
+
+---
+
+## 🔬 单 vs 多 agent 基线对照实验（为"该不该上多 agent"找证据）
+
+**动机**：不默认多 agent 更优。建一个**单 agent 基线**（一个 LLM + 两个原始工具 `query_db` / `run_code` + "取数→分析→报告→自评"大 prompt），与多智能体编排在**同模型、同 schema 上下文、同评测题**下对照——若单 agent 就能完美完成，多 agent 的复杂度便站不住脚。方法：用 Langfuse **分角色 trace** 定位失败、用数据库**真值**逐条核数。
+
+**用一道复杂题（配送时长 × 各州 × 相关性）压测，一连揪出三个藏在数据管道里的 bug**——每个单看输出都发现不了：
+
+| # | 架构 | 失败现象 | trace 定位的根因 | 修复 |
+|---|---|---|---|---|
+| 1 | 多 agent | 单次 **17 分钟未返回** | LLM 调用都 <30s，但某 `run_sql` span 开着 16 分钟却无 LLM 子调用 → 卡在**未插桩的 DB 执行**：text2sql 生成的病态 SQL + `run_query` **无执行超时** | `sqlite3.interrupt()` 看门狗超时 |
+| 2 | 单 agent | 撞步数上限、**零产出** | 27 行州表只回前 10 行 → 反复重查"凑"数据、手敲截断、耗尽预算 | 原始工具加"全量进 `df`、上下文只看预览"契约（= **重造 Workspace 黑板**）+ 报告纪律 + 兜底降级 |
+| 3 | 多 agent | 报告**州排名全错**（却自己声明"基于 100 行样本"） | orchestrator 拉**原始明细**（9 万行）被截到 100 → analyst 在残样上 `groupby` 失真；单 agent 没踩是因为它**在 SQL 里就 GROUP BY** 了 | 摘要区分"截断 vs 完整" + 提示编排器**在 SQL 里聚合**，别拉明细给 pandas |
+
+**两边都加固后的公平对照**（同一道复杂题，数字全过真值核验）：
+
+| 轴 | 多 agent | 单 agent |
+|---|---|---|
+| 正确性 | ✅ 最差州 AL/MA/RR/PA、相关 -0.47 | ✅ 同上（相关口径略不同） |
+| **Token / 延迟** | ~30k、更慢（6 次独立调用） | **~20k（省 1/3）、更快** |
+| 缓存利用 | 角色切换打掉 prompt 缓存（`cached≈0`） | 单条对话前缀被缓存复用 |
+| 独立忠实性把关 | ✅ Critic（独立角色） | 自评（会给自己错数盖章） |
+| 专业化 / 模型路由潜力 | ✅（本次未用，故显贵） | — |
+
+**诚实结论**：
+- **单轮、中等复杂任务，单 agent 更优**——同样正确，还省 1/3 token、更快、更简单；多 agent 在此付了"编排税"（每角色重付 prompt + 缓存失效），收益没对等回来。
+- **但不等于"多 agent 没意义"**：① 前面看着"单 agent 赢"是**精修过的单 agent vs 带 bug 的多 agent**，不公平，修对后两边都做对；② 把单 agent 加固到能扛复杂题，**本质是在它体内逐件重造多 agent 的机制**（黑板 / 收口 / 兜底 / SQL 内聚合）——两套架构**殊途同归**；③ 多 agent 的开销只在**独立把关 / 专业化路由 / 大规模长任务**真正需要时才回本。
+- **真正在赢的是方法**：建基线 + 分角色 trace 归因 + 真值逐层证伪，一连揪出三个**只看输出绝对发现不了**的管道 bug。**架构选择由"任务复杂度 + 忠实性要求 + 维护/评测需求"决定，不由"谁更高级"。** 复现：`uv run scripts/demos/single_agent.py "<问题>"` vs `orchestrate.py "<同一问题>"`
 
 ---
 
@@ -147,7 +176,8 @@ InsightProject/
 │   │   ├── agent_tools.py  #   子 agent → 编排器工具（agents-as-tools）
 │   │   ├── critic_agent.py #   CriticAgent 忠实性审查（function calling 裁决）
 │   │   ├── report_agent.py #   ReportAgent 从证据写结构化报告
-│   │   └── schema_context.py  # schema 上下文层（注入业务口径/品类翻译，"语义层 lite"）
+│   │   ├── schema_context.py  # schema 上下文层（注入业务口径/品类翻译，"语义层 lite"）
+│   │   └── single_agent.py #   单 agent 基线（一个 LLM + 原始工具，架构对照实验用）
 │   └── eval/              # 评测层
 │       ├── evaluation.py   #   Spider EX 结果集比对（列序无关）
 │       ├── judge.py        #   LLM-as-judge（function calling 给报告打分）
@@ -160,6 +190,7 @@ InsightProject/
 │   │   ├── analyze.py     #   SQL → 沙箱 pandas 进阶分析
 │   │   ├── chart.py       #   SQL → 沙箱 matplotlib 画图 → chart.png
 │   │   ├── orchestrate.py #   多智能体编排：自主"取数→分析→审查→报告"
+│   │   ├── single_agent.py #   单 agent 基线 demo（与多 agent 同台对照）
 │   │   └── hello_bailian.py  #   百炼连通性自检（最早的 smoke test）
 │   ├── spider/            # Spider 评测流水线
 │   │   └── download / predict / score_spider.py
@@ -233,7 +264,8 @@ uv run pytest -q     # 47 passed（Docker 相关测试无环境时自动 skip）
 - [x] **Week 3** —— 多智能体编排（LLM supervisor + agents-as-tools + Critic 闸门）+ 长链路归因
 - [x] **Week 4** —— LLM-as-judge eval harness + Critic 有效性 A/B + 成本可观测 + Streamlit demo
 - [x] **Week 5(A)** —— 真实电商数据（Olist）+ schema 上下文层（语义层 lite）+ FastAPI + Docker Compose 部署
-- [ ] 长期 —— schema 检索 RAG（大库时）、反问澄清 / 多轮、MCP 多数据源、跨会话记忆
+- [x] **单 vs 多 agent 基线对照** —— trace + 真值揪出 3 个数据管道 bug；诚实结论：中等任务单 agent 更省优、两架构加固后殊途同归、"方法才是价值"
+- [ ] 长期 —— schema 检索 RAG（大库时）、反问澄清 / 多轮、MCP 多数据源、跨会话记忆、**子 agent 模型路由降本**
 
 ---
 
