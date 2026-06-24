@@ -81,7 +81,7 @@ class Orchestrator:
         max_steps: int = 6,
         critic=None,
         max_reviews: int = 2,
-        report=None,  # 鸭子类型：任何带 .write(question, evidence) 的对象
+        report=None,
     ):
         self.client = client
         self.model = model
@@ -99,96 +99,41 @@ class Orchestrator:
             {"role": "user", "content": question},
         ]
         tool_schemas = [t.schema() for t in self.tools.values()]
-        called = []
+        called: list = []
         reviews_done = 0
         last_candidate = ""
         last_evidence = ""
 
         for step in range(1, self.max_steps + 1):
-            resp = self.client.chat.completions.create(
-                model=self.model,
-                temperature=0,
-                messages=messages,
-                tools=tool_schemas,
-            )
-            msg = resp.choices[0].message
+            msg = self._plan(messages, tool_schemas)
 
-            # 模型不再要工具 → 该收尾了
-            if not msg.tool_calls:
-                # 证据 = 工具返回的真实数据（给 Report 写 / 给 Critic 审）
-                evidence = "\n\n".join(
-                    m["content"] for m in messages if m.get("role") == "tool"
-                )
-                # 有 Report agent → 用它从证据合成报告；否则用编排器自己的话
-                candidate = (
-                    self.report.write(question, evidence)
-                    if self.report is not None
-                    else (msg.content or "")
-                )
-                last_candidate, last_evidence = candidate, evidence
-
-                # 没挂 Critic，或评审预算用尽 → 直接采纳
-                if self.critic is None or reviews_done >= self.max_reviews:
-                    return OrchestratorResult(
-                        candidate, step, called, reviews_done, evidence
-                    )
-
-                # 过 Critic 闸门（审的是 candidate，即报告）
-                critique = self.critic.review(question, candidate, evidence)
-                reviews_done += 1
-                if critique.approved:
-                    return OrchestratorResult(
-                        candidate, step, called, reviews_done, evidence
-                    )
-
-                # 不通过 → 候选 + 审查意见一起喂回，继续修
-                messages.append({"role": "assistant", "content": candidate})
-                messages.append(
-                    {
-                        "role": "user",
-                        "content": REVISE_TEMPLATE.format(feedback=critique.feedback),
-                    }
-                )
+            # 还要调工具 → 执行后进入下一轮
+            if msg.tool_calls:
+                self._dispatch_tool_calls(msg, messages, called)
                 continue
 
-            # 有 tool_calls → 执行工具
-            messages.append(
-                {
-                    "role": "assistant",
-                    "content": msg.content,
-                    "tool_calls": [
-                        {
-                            "id": tc.id,
-                            "type": "function",
-                            "function": {
-                                "name": tc.function.name,
-                                "arguments": tc.function.arguments,
-                            },
-                        }
-                        for tc in msg.tool_calls
-                    ],
-                }
-            )
-            for tc in msg.tool_calls:
-                name = tc.function.name
-                args = json.loads(tc.function.arguments or "{}")
-                called.append({"name": name, "args": args})
-                tool = self.tools.get(name)
-                if tool is None:
-                    result = f"错误：未知工具 {name}"
-                else:
-                    try:
-                        result = tool.handler(self.workspace, **args)
-                    except Exception as e:  # 工具炸了不让编排崩，把错误喂回让 LLM 调整
-                        result = f"工具 {name} 执行出错：{e}"
-                messages.append(
-                    {"role": "tool", "tool_call_id": tc.id, "content": result}
+            # 不再调工具 → 收尾：从证据写报告，过 Critic 闸门
+            evidence = self._collect_evidence(messages)
+            candidate = self._build_candidate(question, evidence, fallback=msg.content)
+            last_candidate, last_evidence = candidate, evidence
+
+            if self.critic is None or reviews_done >= self.max_reviews:
+                return OrchestratorResult(
+                    candidate, step, called, reviews_done, evidence
                 )
 
-        # 预算耗尽：尽量从已收集的证据产出报告，别返回废话
-        evidence = last_evidence or "\n\n".join(
-            m["content"] for m in messages if m.get("role") == "tool"
-        )
+            critique = self.critic.review(question, candidate, evidence)
+            reviews_done += 1
+            if critique.approved:
+                return OrchestratorResult(
+                    candidate, step, called, reviews_done, evidence
+                )
+
+            # 不通过 → 把意见喂回，下一轮重修
+            self._request_revision(messages, candidate, critique.feedback)
+
+        # 预算耗尽：尽量从已收集的证据产出报告，否则给提示
+        evidence = last_evidence or self._collect_evidence(messages)
         if last_candidate:
             answer = last_candidate
         elif self.report is not None and evidence:
@@ -197,4 +142,70 @@ class Orchestrator:
             answer = "（达到步数上限，未能在预算内完成）"
         return OrchestratorResult(
             answer, self.max_steps, called, reviews_done, evidence
+        )
+
+    # ---- run() 用到的小步骤：名字即文档 ----
+
+    def _plan(self, messages: list[dict], tool_schemas: list[dict]):
+        """问 LLM 下一步：要调工具，还是给终答。返回助手消息对象。"""
+        resp = self.client.chat.completions.create(
+            model=self.model, temperature=0, messages=messages, tools=tool_schemas
+        )
+        return resp.choices[0].message
+
+    def _build_candidate(self, question: str, evidence: str, fallback) -> str:
+        """有 Report agent 就用它从证据写报告；否则用编排器自己的话（fallback）。"""
+        if self.report is not None:
+            return self.report.write(question, evidence)
+        return fallback or ""
+
+    def _dispatch_tool_calls(self, msg, messages: list[dict], called: list) -> None:
+        """执行模型这轮要的所有工具，并把 assistant + 各 tool 结果回填 messages。"""
+        messages.append(self._assistant_tool_message(msg))
+        for tc in msg.tool_calls:
+            args = json.loads(tc.function.arguments or "{}")
+            called.append({"name": tc.function.name, "args": args})
+            result = self._run_tool(tc.function.name, args)
+            messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
+
+    def _run_tool(self, name: str, args: dict) -> str:
+        """跑一个工具；未知工具 / 抛异常都转成文本喂回，不让编排崩。"""
+        tool = self.tools.get(name)
+        if tool is None:
+            return f"错误：未知工具 {name}"
+        try:
+            return tool.handler(self.workspace, **args)
+        except Exception as e:  # 工具炸了不让编排崩，把错误喂回让 LLM 调整
+            return f"工具 {name} 执行出错：{e}"
+
+    @staticmethod
+    def _collect_evidence(messages: list[dict]) -> str:
+        """把历史里所有工具结果（role=='tool'）拼成"证据"，给 Report 写 / Critic 审。"""
+        return "\n\n".join(m["content"] for m in messages if m.get("role") == "tool")
+
+    @staticmethod
+    def _assistant_tool_message(msg) -> dict:
+        """把 API 返回的助手消息（含 tool_calls）重组成发回去用的 dict。"""
+        return {
+            "role": "assistant",
+            "content": msg.content,
+            "tool_calls": [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.function.name,
+                        "arguments": tc.function.arguments,
+                    },
+                }
+                for tc in msg.tool_calls
+            ],
+        }
+
+    @staticmethod
+    def _request_revision(messages: list[dict], candidate: str, feedback: str) -> None:
+        """Critic 不通过：把候选答 + 修改意见喂回，触发下一轮重写。"""
+        messages.append({"role": "assistant", "content": candidate})
+        messages.append(
+            {"role": "user", "content": REVISE_TEMPLATE.format(feedback=feedback)}
         )
