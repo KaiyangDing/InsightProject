@@ -82,6 +82,7 @@ class Orchestrator:
         critic=None,
         max_reviews: int = 2,
         report=None,
+        schema_overview="",
     ):
         self.client = client
         self.model = model
@@ -90,12 +91,16 @@ class Orchestrator:
         self.critic = critic
         self.max_reviews = max_reviews
         self.report = report
+        self.schema_overview = schema_overview
         self.workspace = Workspace()
 
     @observe(name="orchestrator")
     def run(self, question: str) -> OrchestratorResult:
+        system = ORCHESTRATOR_SYSTEM
+        if self.schema_overview:
+            system += f"\n\n{self.schema_overview}"  # ← 把概览拼进系统提示
         messages = [
-            {"role": "system", "content": ORCHESTRATOR_SYSTEM},
+            {"role": "system", "content": system},
             {"role": "user", "content": question},
         ]
         tool_schemas = [t.schema() for t in self.tools.values()]

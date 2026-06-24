@@ -37,3 +37,13 @@ OLIST_HINTS = """- 销售额/营收 = SUM(order_items.price)（products 表没�
 def olist_schema_context(schema_ddl: str) -> str:
     """Olist 专用：把 db 的裸 DDL 增强成带 Olist 口径的上下文。"""
     return build_schema_context(schema_ddl, OLIST_TABLE_NOTES, OLIST_HINTS)
+
+
+def build_overview(table_notes: dict[str, str], global_hints: str) -> str:
+    """精简数据库概览：表说明 + 业务口径（不含完整 DDL），给编排器规划/路由用。"""
+    notes = "\n".join(f"- {t}: {desc}" for t, desc in table_notes.items())
+    return f"【数据库概览（有哪些表）】\n{notes}\n\n【关键业务口径】\n{global_hints}"
+
+
+def olist_overview() -> str:
+    return build_overview(OLIST_TABLE_NOTES, OLIST_HINTS)

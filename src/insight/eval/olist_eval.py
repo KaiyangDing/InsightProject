@@ -102,6 +102,18 @@ OLIST_EVAL = [
     },
 ]
 
+# 开放/分析型问题：用于 LLM-as-judge 评报告质量（无 gold SQL）。
+# 这类问题报告有发挥空间，judge 才能区分质量；也会触发 analyst 沙箱路径。
+OLIST_JUDGE_QUESTIONS = [
+    "Olist 的销售额在各个州（customer_state）是如何分布的？哪几个州最重要？",
+    "Olist 的客户里回头客多吗？大部分是一次性客户还是会复购？",
+    "Olist 的订单履约情况如何？大多数订单最终都成功交付了吗？",
+    "从销售额和评价来看，哪些产品品类最值得重点关注？",
+    "从评价分数看，Olist 整体的客户满意度怎么样？",
+    "Olist 用户偏好哪种支付方式？分期付款常见吗？",
+    "Olist 的订单量随时间（月份）是怎样变化的？有没有明显的高峰？",
+]
+
 
 def evaluate_ex(db, make_agent, cases=None) -> dict:
     """对每题：agent 生成并执行 SQL → 与 gold SQL 结果集比对(EX)。返回逐题 + 准确率。"""

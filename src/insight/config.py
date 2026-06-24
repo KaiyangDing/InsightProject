@@ -16,7 +16,7 @@ class Settings(BaseSettings):
     # 字段名小写，会自动匹配同名大写环境变量（DASHSCOPE_API_KEY 等），大小写不敏感。
     dashscope_api_key: SecretStr  # 必填，无默认值
     dashscope_base_url: str = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-    chat_model: str = "qwen-plus"
+    chat_model: str = "qwen3.7-plus"
     db_path: str = "data/olist.db"  # SQLite 示例库路径（相对项目根）
     # 以后会往这里加：embedding_model、rerank_model、各档位模型、预算上限 等
 

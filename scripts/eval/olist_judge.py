@@ -1,6 +1,6 @@
-"""跑多智能体端到端评测：编排器答一组问题 → LLM-as-judge 打分 → 输出均分。
+"""C：用 LLM-as-judge（qwen-max，跨模型减偏差）评 full orchestrator 在 Olist 上的报告质量。
 
-用法：uv run scripts/eval/run_agent_eval.py
+用法：uv run scripts/eval/olist_judge.py  （Docker 开着以防触发分析；这些题基本只走 SQL→报告）
 """
 
 from langfuse import get_client
@@ -9,13 +9,16 @@ from insight.agents.agent_tools import make_analyst_tool, make_sql_tool
 from insight.agents.critic_agent import CriticAgent
 from insight.agents.orchestrator import Orchestrator
 from insight.agents.report_agent import ReportAgent
-from insight.agents.schema_context import olist_overview, olist_schema_context
+from insight.agents.schema_context import olist_schema_context, olist_overview
 from insight.config import get_settings
 from insight.eval.agent_eval import evaluate_agent, summarize
 from insight.eval.judge import Judge
+from insight.eval.olist_eval import OLIST_JUDGE_QUESTIONS
 from insight.tools.code_exec import DockerCodeExecutor
 from insight.tools.db import Database
 from insight.tools.llm import get_chat_client
+
+JUDGE_MODEL = "qwen-max"  # 跨模型裁判，减同源偏差（系统用 qwen-plus）
 
 
 def main() -> None:
@@ -24,14 +27,14 @@ def main() -> None:
     model = settings.chat_model
     db = Database(settings.db_path)
     executor = DockerCodeExecutor()
-    schema_ctx = olist_schema_context(db.get_schema_text())
+    ctx = olist_schema_context(db.get_schema_text())
 
     def make_orchestrator() -> Orchestrator:
         return Orchestrator(
             client=client,
             model=model,
             tools=[
-                make_sql_tool(client, model, db, schema_context=schema_ctx),
+                make_sql_tool(client, model, db, schema_context=ctx),
                 make_analyst_tool(client, model, executor),
             ],
             critic=CriticAgent(client, model),
@@ -39,9 +42,11 @@ def main() -> None:
             schema_overview=olist_overview(),
         )
 
-    judge = Judge(client, model)
-    results = evaluate_agent(make_orchestrator, judge)
+    judge = Judge(client, JUDGE_MODEL)
+    questions = OLIST_JUDGE_QUESTIONS
+    results = evaluate_agent(make_orchestrator, judge, questions)
 
+    print(f"裁判 = {JUDGE_MODEL}（系统 = {model}）\n")
     for r in results:
         print(f"[忠实{r['faithfulness']} 相关{r['relevance']}] {r['question']}")
     s = summarize(results)

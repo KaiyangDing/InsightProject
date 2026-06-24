@@ -9,6 +9,7 @@ from insight.agents.agent_tools import make_analyst_tool, make_sql_tool
 from insight.agents.critic_agent import CriticAgent
 from insight.agents.orchestrator import Orchestrator
 from insight.agents.report_agent import ReportAgent
+from insight.agents.schema_context import olist_overview, olist_schema_context
 from insight.config import get_settings
 from insight.eval.agent_eval import TRAP_QUESTIONS, compare, evaluate_agent
 from insight.eval.judge import Judge
@@ -18,16 +19,19 @@ from insight.tools.llm import get_chat_client
 
 
 def make_factory(client, model, db, executor, with_critic: bool):
+    schema_ctx = olist_schema_context(db.get_schema_text())
+
     def _factory():
         return Orchestrator(
             client=client,
             model=model,
             tools=[
-                make_sql_tool(client, model, db),
+                make_sql_tool(client, model, db, schema_context=schema_ctx),
                 make_analyst_tool(client, model, executor),
             ],
             critic=CriticAgent(client, model) if with_critic else None,
             report=ReportAgent(client, model),
+            schema_overview=olist_overview(),
         )
 
     return _factory

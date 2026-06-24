@@ -12,23 +12,34 @@ EVAL_QUESTIONS = [
 
 
 def evaluate_agent(make_orchestrator, judge: Judge, questions=None) -> list[dict]:
-    """每题：跑一个全新编排器 → 拿报告+证据 → judge 打分。返回逐题结果。"""
     questions = questions if questions is not None else EVAL_QUESTIONS
     results = []
     for q in questions:
-        orch = make_orchestrator()  # 每题一个全新编排器 = fresh workspace，互不污染
-        result = orch.run(q)
-        j = judge.judge(q, result.evidence, result.answer)
-        results.append(
-            {
-                "question": q,
-                "report": result.answer,
-                "faithfulness": j.faithfulness,
-                "relevance": j.relevance,
-                "steps": result.steps,
-                "reviews": result.reviews,
-            }
-        )
+        try:
+            orch = make_orchestrator()
+            result = orch.run(q)
+            j = judge.judge(q, result.evidence, result.answer)
+            results.append(
+                {
+                    "question": q,
+                    "report": result.answer,
+                    "faithfulness": j.faithfulness,
+                    "relevance": j.relevance,
+                    "steps": result.steps,
+                    "reviews": result.reviews,
+                }
+            )
+        except Exception as e:  # 单题失败不拖垮整轮（记 0 分，被 summarize 过滤掉）
+            results.append(
+                {
+                    "question": q,
+                    "report": f"(评测出错: {e})",
+                    "faithfulness": 0,
+                    "relevance": 0,
+                    "steps": 0,
+                    "reviews": 0,
+                }
+            )
     return results
 
 

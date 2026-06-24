@@ -13,7 +13,7 @@ from insight.agents.agent_tools import CHART_KEY, make_analyst_tool, make_sql_to
 from insight.agents.critic_agent import CriticAgent
 from insight.agents.orchestrator import Orchestrator
 from insight.agents.report_agent import ReportAgent
-from insight.agents.schema_context import olist_schema_context
+from insight.agents.schema_context import olist_schema_context, olist_overview
 from insight.config import get_settings
 from insight.tools.code_exec import DockerCodeExecutor
 from insight.tools.db import Database
@@ -49,6 +49,7 @@ def get_orchestrator() -> Orchestrator:
         ],
         critic=CriticAgent(client, model),
         report=ReportAgent(client, model),
+        schema_overview=olist_overview(),
     )
 
 

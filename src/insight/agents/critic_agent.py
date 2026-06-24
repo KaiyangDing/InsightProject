@@ -84,10 +84,13 @@ class CriticAgent:
             temperature=0,
             messages=messages,
             tools=[CRITIQUE_TOOL],
-            tool_choice={  # ← 强制必须调 submit_critique
+            tool_choice={
                 "type": "function",
                 "function": {"name": "submit_critique"},
             },
+            extra_body={
+                "enable_thinking": False
+            },  # ← qwen3 思考模式不支持强制 tool_choice，关掉
         )
         return self._parse(resp.choices[0].message)
 

@@ -18,7 +18,7 @@ from insight.tools.code_exec import DockerCodeExecutor
 from insight.tools.db import Database
 from insight.tools.llm import get_chat_client
 from insight.agents.report_agent import ReportAgent
-from insight.agents.schema_context import olist_schema_context
+from insight.agents.schema_context import olist_schema_context, olist_overview
 
 DEFAULT_QUESTION = "把各品类的总销售额画成柱状图，并指出销售额最高的品类。"
 
@@ -42,6 +42,7 @@ def main() -> None:
         ],
         critic=CriticAgent(client, model),
         report=ReportAgent(client, model),
+        schema_overview=olist_overview(),
     )
 
     print(f"❓ 问题：{question}\n")
