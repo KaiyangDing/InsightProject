@@ -42,6 +42,7 @@ _FONT_SETUP = """
 try:
     import matplotlib.pyplot as plt
 
+
     plt.style.use("seaborn-v0_8-darkgrid")  # seaborn 同款风格（matplotlib 内置）
     plt.rcParams["font.sans-serif"] = ["WenQuanYi Zen Hei", "DejaVu Sans"]  # 风格之后再设字体，不被覆盖
     plt.rcParams["axes.unicode_minus"] = False
