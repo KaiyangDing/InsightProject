@@ -18,6 +18,7 @@ from insight.tools.code_exec import DockerCodeExecutor
 from insight.tools.db import Database
 from insight.tools.llm import get_chat_client
 from insight.agents.report_agent import ReportAgent
+from insight.agents.schema_context import olist_schema_context
 
 DEFAULT_QUESTION = "把各品类的总销售额画成柱状图，并指出销售额最高的品类。"
 
@@ -29,17 +30,18 @@ def main() -> None:
     client = get_chat_client(settings)
     model = settings.chat_model
     db = Database(settings.db_path)
+    schema_ctx = olist_schema_context(db.get_schema_text())  # ← 建一次
     executor = DockerCodeExecutor()
 
     orchestrator = Orchestrator(
         client=client,
         model=model,
         tools=[
-            make_sql_tool(client, model, db),
+            make_sql_tool(client, model, db, schema_context=schema_ctx),  # ← 传进去
             make_analyst_tool(client, model, executor),
         ],
         critic=CriticAgent(client, model),
-        report=ReportAgent(client, model),  # ← 专门写结构化报告
+        report=ReportAgent(client, model),
     )
 
     print(f"❓ 问题：{question}\n")

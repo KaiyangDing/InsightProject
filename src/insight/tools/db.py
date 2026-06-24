@@ -15,7 +15,7 @@ class Database:
         self.db_path = resolve(db_path)  # 锚定到项目根，得到绝对 Path
         if not self.db_path.exists():
             raise DatabaseNotReadyError(
-                f"找不到数据库 {self.db_path}，请先运行 `uv run scripts/init_db.py` 生成。"
+                f"找不到数据库 {self.db_path}，请先运行uv run生成。"
             )
 
     def _connect_ro(self) -> sqlite3.Connection:

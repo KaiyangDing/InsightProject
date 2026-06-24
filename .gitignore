@@ -12,7 +12,7 @@ __pycache__/
 .pytest_cache/
 
 # 数据与日志（之后会用到）
-data/*.db
+data/
 *.log
 
 # IDE

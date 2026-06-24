@@ -16,9 +16,13 @@ SQL_RESULT_KEY = "last_sql_result"  # workspace 里存最近一次 SQL 结果的
 CHART_KEY = "last_chart"  # workspace 里存最近一次分析产生的图（PNG bytes）
 
 
-def make_sql_tool(client: OpenAI, model: str, db: Database) -> Tool:
+def make_sql_tool(
+    client: OpenAI, model: str, db: Database, schema_context=None
+) -> Tool:
     def handler(workspace: Workspace, question: str) -> str:
-        result = Text2SQLAgent(client, model, db).run(question)
+        result = Text2SQLAgent(client, model, db, schema_context=schema_context).run(
+            question
+        )
         if not result.success:
             return f"SQL 查询失败（自我纠错 {result.attempts} 次后）：{result.error}"
 
